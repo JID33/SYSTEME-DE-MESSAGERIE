@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Facture Simple</title>
+    <style>
+        body { font-family: Arial; max-width: 800px; margin: auto; }
+        table, th, td { border: 1px solid black; border-collapse: collapse; }
+        th, td { padding: 8px; }
+        input { width: 100%; }
+    </style>
+</head>
+<body>
+    <h2>Facture</h2>
+    <label>Nom Client : <input id="client" /></label><br><br>
+    <table id="produits">
+        <thead>
+            <tr><th>Produit</th><th>Quantité</th><th>Prix</th><th>Total</th></tr>
+        </thead>
+        <tbody id="ligne-produits">
+            <tr>
+                <td><input class="produit" /></td>
+                <td><input type="number" class="quantite" value="1" /></td>
+                <td><input type="number" class="prix" value="0" /></td>
+                <td class="total">0</td>
+            </tr>
+        </tbody>
+    </table>
+    <button onclick="ajouterLigne()">+ Ajouter une ligne</button><br><br>
+    <strong>Total Général : <span id="total-general">0</span> USD</strong><br><br>
+    <button onclick="genererFacture()">Générer la facture</button>
+
+    <script>
+        function ajouterLigne() {
+            const table = document.getElementById("ligne-produits");
+            const row = table.insertRow();
+            row.innerHTML = `
+                <td><input class="produit" /></td>
+                <td><input type="number" class="quantite" value="1" /></td>
+                <td><input type="number" class="prix" value="0" /></td>
+                <td class="total">0</td>`;
+            row.querySelectorAll('input').forEach(input => {
+                input.addEventListener('input', calculerTotal);
+            });
+        }
+
+        function calculerTotal() {
+            let totalGeneral = 0;
+            document.querySelectorAll("#ligne-produits tr").forEach(row => {
+                const qte = parseFloat(row.querySelector('.quantite').value || 0);
+                const prix = parseFloat(row.querySelector('.prix').value || 0);
+                const total = qte * prix;
+                row.querySelector('.total').innerText = total.toFixed(2);
+                totalGeneral += total;
+            });
+            document.getElementById("total-general").innerText = totalGeneral.toFixed(2);
+        }
+
+        document.querySelectorAll('input').forEach(input => {
+            input.addEventListener('input', calculerTotal);
+        });
+
+        function genererFacture() {
+            const client = document.getElementById("client").value;
+            const total = document.getElementById("total-general").innerText;
+            alert(`Facture générée pour ${client}.\nTotal : ${total} USD`);
+            // Tu peux ici l’envoyer vers Google Sheets ou créer un PDF.
+        }
+    </script>
+</body>
+</html>
