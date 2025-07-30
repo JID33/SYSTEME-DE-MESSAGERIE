@@ -1,1342 +1,805 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Image, FileText, Mic, Video, Users, Plus, X, PhoneCall, PhoneOff, BookText, Lightbulb, Volume2, Smile } from 'lucide-react';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title data-i18n="appTitle">Lottery System</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- SheetJS CDN for Excel export -->
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5; /* Light gray background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
 
-// Helper function to convert base64 to ArrayBuffer import React, { useState, useRef, useEffect } from 'react';
-import { Send, Image, FileText, Mic, Video, Users, Plus, X, PhoneCall, PhoneOff, BookText, Lightbulb, Volume2, Smile } from 'lucide-react';
+        .container {
+            background-color: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            max-width: 900px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+            align-items: center;
+        }
 
-// Helper function to convert base64 to ArrayBuffer for audio
-const base64ToArrayBuffer = (base64) => {
-  const binaryString = window.atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes.buffer;
-};
-
-// Helper function to convert PCM audio data to WAV format
-const pcmToWav = (pcmData, sampleRate) => {
-  const pcm16 = new Int16Array(pcmData);
-  const numChannels = 1;
-  const bitsPerSample = 16;
-  const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
-  const blockAlign = numChannels * (bitsPerSample / 8);
-  const dataSize = pcm16.length * (bitsPerSample / 8);
-
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
-
-  // RIFF chunk descriptor
-  writeString(view, 0, 'RIFF');
-  view.setUint32(4, 36 + dataSize, true);
-  writeString(view, 8, 'WAVE');
-
-  // FMT sub-chunk
-  writeString(view, 12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // AudioFormat: 1 for PCM
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, byteRate, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, bitsPerSample, true);
-
-  // DATA sub-chunk
-  writeString(view, 36, 'data');
-  view.setUint32(40, dataSize, true);
-
-  // Write PCM data
-  for (let i = 0; i < pcm16.length; i++) {
-    view.setInt16(44 + i * 2, pcm16[i], true);
-  }
-
-  return new Blob([view], { type: 'audio/wav' });
-};
-
-const writeString = (view, offset, string) => {
-  for (let i = 0; i < string.length; i++) {
-    view.setUint8(offset + i, string.charCodeAt(i));
-  }
-};
-
-// Main App Component
-const App = () => {
-  // State for messages in the chat
-  const [messages, setMessages] = useState([]);
-  // State for the current text message being typed
-  const [currentMessage, setCurrentMessage] = useState('');
-  // State for group members (simulated)
-  const [groupMembers, setGroupMembers] = useState(['Alice', 'Bob', 'Charlie']);
-  // State to control the "add member" modal visibility
-  const [isAddingMember, setIsAddingMember] = useState(false);
-  // State for the new member's name input
-  const [newMemberName, setNewMemberName] = useState('');
-  // State to simulate an active video call
-  const [isCallActive, setIsCallActive] = useState(false);
-  // Ref for auto-scrolling to the bottom of the chat
-  const messagesEndRef = useRef(null);
-
-  // States for Gemini API features
-  const [isSummarizing, setIsSummarizing] = useState(false);
-  const [suggestedReply, setSuggestedReply] = useState('');
-  const [isGeneratingReply, setIsGeneratingReply] = useState(false);
-  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
-
-  // New state for emoji picker visibility
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  // New state for typing indicator simulation
-  const [isTyping, setIsTyping] = useState(false);
-
-  // Common Emojis for the picker
-  const emojis = ['😀', '😂', '😍', '👍', '🙏', '🎉', '🚀', '💡', '❤️', '🔥', '😊', '😎', '🥳', '🤩', '🤔', '💬'];
-
-  // Gemini API Key (Canvas will inject this at runtime)
-  const apiKey = "";
-
-  // Scroll to the bottom of the chat whenever messages change
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  // Simulate typing indicator
-  useEffect(() => {
-    let typingTimeout;
-    if (currentMessage.length > 0) {
-      setIsTyping(true);
-      typingTimeout = setTimeout(() => {
-        setIsTyping(false);
-      }, 1500); // Typing indicator shows for 1.5 seconds after last key press
-    } else {
-      setIsTyping(false);
-      clearTimeout(typingTimeout);
-    }
-    return () => clearTimeout(typingTimeout);
-  }, [currentMessage]);
-
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  // Function to send a text message
-  const sendMessage = () => {
-    if (currentMessage.trim()) {
-      const newMessage = {
-        id: Date.now(),
-        sender: 'You', // In a real app, this would be the authenticated user
-        type: 'text',
-        content: currentMessage.trim(),
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages((prevMessages) => [...prevMessages, newMessage]);
-      setCurrentMessage(''); // Clear input field
-      setSuggestedReply(''); // Clear any pending suggestions
-      setShowEmojiPicker(false); // Close emoji picker after sending
-    }
-  };
-
-  // Function to insert emoji into message input
-  const insertEmoji = (emoji) => {
-    setCurrentMessage((prevMsg) => prevMsg + emoji);
-  };
-
-  // Simulated function for handling file uploads (images, documents, voice)
-  const handleFileUpload = (type) => {
-    const fileName = `example_${type}_${Date.now()}.${type === 'image' ? 'png' : type === 'document' ? 'pdf' : 'mp3'}`;
-    const newMessage = {
-      id: Date.now(),
-      sender: 'You',
-      type: type,
-      content: fileName, // In a real app, this would be a URL
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-    setMessages((prevMessages) => [...prevMessages, newMessage]);
-  };
-
-  // Function to add a new member to the group
-  const addMember = () => {
-    if (newMemberName.trim() && !groupMembers.includes(newMemberName.trim())) {
-      setGroupMembers((prevMembers) => [...prevMembers, newMemberName.trim()]);
-      setNewMemberName('');
-      setIsAddingMember(false); // Close modal
-      const notificationMessage = {
-        id: Date.now(),
-        sender: 'System',
-        type: 'notification',
-        content: `${newMemberName.trim()} has been added to the group.`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages((prevMessages) => [...prevMessages, notificationMessage]);
-    }
-  };
-
-  // Function to simulate starting a video call
-  const startVideoCall = () => {
-    setIsCallActive(true);
-    const callMessage = {
-      id: Date.now(),
-      sender: 'System',
-      type: 'video_call_start',
-      content: 'Video call started!',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-    setMessages((prevMessages) => [...prevMessages, callMessage]);
-  };
-
-  // Function to simulate ending a video call
-  const endVideoCall = () => {
-    setIsCallActive(false);
-    const callEndMessage = {
-      id: Date.now(),
-      sender: 'System',
-      type: 'video_call_end',
-      content: 'Video call ended.',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-    setMessages((prevMessages) => [...prevMessages, callEndMessage]);
-  };
-
-  // ✨ Gemini API Integration: Summarize Chat
-  const summarizeChat = async () => {
-    setIsSummarizing(true);
-    try {
-      // Filter out system messages and format for LLM
-      const chatHistoryForLLM = messages
-        .filter(msg => msg.type === 'text')
-        .map(msg => `${msg.sender}: ${msg.content}`)
-        .join('\n');
-
-      if (!chatHistoryForLLM) {
-        setMessages(prev => [...prev, { id: Date.now(), sender: 'System', type: 'notification', content: 'No text messages to summarize.', timestamp: new Date().toLocaleTimeString() }]);
-        setIsSummarizing(false);
-        return;
-      }
-
-      const prompt = `Summarize the following chat conversation:\n\n${chatHistoryForLLLLM}\n\nSummary:`;
-
-      let chatHistory = [];
-      chatHistory.push({ role: "user", parts: [{ text: prompt }] });
-      const payload = { contents: chatHistory };
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const result = await response.json();
-
-      if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
-        const summaryText = result.candidates[0].content.parts[0].text;
-        setMessages(prev => [...prev, {
-          id: Date.now(),
-          sender: 'System',
-          type: 'notification',
-          content: `✨ Chat Summary: ${summaryText}`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        }]);
-      } else {
-        setMessages(prev => [...prev, { id: Date.now(), sender: 'System', type: 'notification', content: 'Failed to generate summary.', timestamp: new Date().toLocaleTimeString() }]);
-      }
-    } catch (error) {
-      console.error('Error summarizing chat:', error);
-      setMessages(prev => [...prev, { id: Date.now(), sender: 'System', type: 'notification', content: 'Error summarizing chat. Please try again.', timestamp: new Date().toLocaleTimeString() }]);
-    } finally {
-      setIsSummarizing(false);
-    }
-  };
-
-  // ✨ Gemini API Integration: Get Smart Reply Suggestion
-  const getSuggestedReply = async () => {
-    setIsGeneratingReply(true);
-    setSuggestedReply(''); // Clear previous suggestion
-    try {
-      // Get last 5 text messages for context
-      const recentMessages = messages
-        .filter(msg => msg.type === 'text')
-        .slice(-5)
-        .map(msg => `${msg.sender}: ${msg.content}`)
-        .join('\n');
-
-      if (!recentMessages) {
-        setSuggestedReply('No recent messages for a suggestion.');
-        setIsGeneratingReply(false);
-        return;
-      }
-
-      const prompt = `Based on the following recent chat conversation, suggest a concise and appropriate reply. Do not include sender names in the reply.
-      \n\nConversation:\n${recentMessages}\n\nSuggested Reply:`;
-
-      let chatHistory = [];
-      chatHistory.push({ role: "user", parts: [{ text: prompt }] });
-      const payload = { contents: chatHistory };
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const result = await response.json();
-
-      if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
-        setSuggestedReply(result.candidates[0].content.parts[0].text);
-      } else {
-        setSuggestedReply('Could not generate a suggestion.');
-      }
-    } catch (error) {
-      console.error('Error generating reply:', error);
-      setSuggestedReply('Error generating reply.');
-    } finally {
-      setIsGeneratingReply(false);
-    }
-  };
-
-  // ✨ Gemini API Integration: Read Message Aloud (TTS)
-  const readMessageAloud = async (textToSpeak) => {
-    if (isPlayingAudio) return; // Prevent multiple audio plays
-    setIsPlayingAudio(true);
-
-    try {
-      const payload = {
-        contents: [{
-          parts: [{ text: textToSpeak }]
-        }],
-        generationConfig: {
-          responseModalities: ["AUDIO"],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: "Kore" } // Using Kore voice
+        @media (min-width: 768px) {
+            .container {
+                flex-direction: row;
+                justify-content: space-around;
+                align-items: flex-start;
             }
-          }
-        },
-        model: "gemini-2.5-flash-preview-tts"
-      };
+        }
 
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const result = await response.json();
+        .input-section, .wheel-section {
+            flex: 1;
+            padding: 20px;
+            border-radius: 15px;
+            background-color: #f9fafb;
+            box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.05);
+            min-width: 300px;
+        }
 
-      const part = result?.candidates?.[0]?.content?.parts?.[0];
-      const audioData = part?.inlineData?.data;
-      const mimeType = part?.inlineData?.mimeType;
+        .wheel-container {
+            position: relative;
+            width: 300px; /* Base size for the wheel */
+            height: 300px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 8px solid #3b82f6; /* Blue border */
+            box-shadow: 0 0 0 5px #bfdbfe, 0 0 20px rgba(0, 0, 0, 0.2);
+            transition: transform 6s cubic-bezier(0.25, 0.1, 0.25, 1); /* Smooth spin transition */
+            margin: 0 auto;
+        }
 
-      if (audioData && mimeType && mimeType.startsWith("audio/L16")) {
-        const sampleRateMatch = mimeType.match(/rate=(\d+)/);
-        const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 16000; // Default to 16kHz if not found
+        .wheel-segment {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            transform-origin: 50% 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 14px;
+            font-weight: 600;
+            color: #ffffff;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+            box-sizing: border-box;
+            padding-top: 20px; /* Push text down to avoid center overlap */
+        }
 
-        const pcmData = base64ToArrayBuffer(audioData);
-        const wavBlob = pcmToWav(pcmData, sampleRate);
-        const audioUrl = URL.createObjectURL(wavBlob);
+        .pointer {
+            position: absolute;
+            top: -25px; /* Position above the wheel */
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ef4444; /* Red color for the pointer */
+            font-size: 50px;
+            z-index: 10;
+            text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+        }
 
-        const audio = new Audio(audioUrl);
-        audio.play();
-        audio.onended = () => {
-          setIsPlayingAudio(false);
-          URL.revokeObjectURL(audioUrl); // Clean up the URL
-        };
-      } else {
-        console.error('TTS API response error or no audio data:', result);
-        alert('Failed to play audio. No valid audio data received.');
-        setIsPlayingAudio(false);
-      }
-    } catch (error) {
-      console.error('Error playing audio:', error);
-      alert('Error playing audio. Please check console for details.');
-      setIsPlayingAudio(false);
-    }
-  };
+        .result-display {
+            background-color: #ecfdf5; /* Light green background for result */
+            color: #047857; /* Dark green text */
+            padding: 20px;
+            border-radius: 15px;
+            font-size: 2.25rem; /* Large font size */
+            font-weight: 700;
+            text-align: center;
+            margin-top: 20px;
+            width: 100%;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            opacity: 0; /* Hidden by default */
+            transform: translateY(20px);
+            transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+        }
 
-  // Function to get a consistent color for sender initials
-  const getSenderColor = (sender) => {
-    const colors = ['bg-red-400', 'bg-green-400', 'bg-purple-400', 'bg-orange-400', 'bg-teal-400', 'bg-pink-400'];
-    let hash = 0;
-    for (let i = 0; i < sender.length; i++) {
-      hash = sender.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const index = Math.abs(hash % colors.length);
-    return colors[index];
-  };
+        .result-display.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
 
-
-  return (
-    <div className="flex flex-col h-screen bg-gray-100 font-inter antialiased">
-      {/* Header */}
-      <header className="bg-gradient-to-r from-blue-600 to-purple-700 text-white p-4 shadow-lg flex items-center justify-between rounded-b-xl">
-        <h1 className="text-2xl font-bold">Chat App (Simulation)</h1>
-        <div className="flex space-x-4">
-          <button
-            onClick={() => setIsAddingMember(true)}
-            className="p-2 bg-blue-500 hover:bg-blue-400 rounded-full shadow-md transition-all duration-200"
-            title="Add Member"
-          >
-            <Users size={20} />
-          </button>
-          <button
-            onClick={summarizeChat}
-            disabled={isSummarizing}
-            className="p-2 bg-indigo-500 hover:bg-indigo-400 text-white rounded-full shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="✨ Summarize Chat"
-          >
-            {isSummarizing ? '...' : <BookText size={20} />}
-          </button>
-          {!isCallActive ? (
-            <button
-              onClick={startVideoCall}
-              className="p-2 bg-green-500 hover:bg-green-400 rounded-full shadow-md transition-all duration-200"
-              title="Start Video Call"
-            >
-              <Video size={20} />
-            </button>
-          ) : (
-            <button
-              onClick={endVideoCall}
-              className="p-2 bg-red-500 hover:bg-red-400 rounded-full shadow-md transition-all duration-200"
-              title="End Video Call"
-            >
-              <PhoneOff size={20} />
-            </button>
-          )}
-        </div>
-      </header>
-
-      {/* Main Content Area */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar for Group Members */}
-        <aside className="w-1/4 bg-white p-4 border-r border-gray-200 shadow-inner rounded-br-xl overflow-y-auto">
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">Group Members</h2>
-          <ul className="space-y-2">
-            {groupMembers.map((member, index) => (
-              <li key={index} className="flex items-center p-2 bg-gray-50 rounded-lg shadow-sm">
-                <div className="w-8 h-8 bg-blue-200 text-blue-800 rounded-full flex items-center justify-center font-bold mr-3">
-                  {member.charAt(0)}
-                </div>
-                <span className="text-gray-700">{member}</span>
-              </li>
-            ))}
-          </ul>
-        </aside>
-
-        {/* Chat Area */}
-        <main className="flex-1 flex flex-col bg-gray-50 rounded-bl-xl">
-          <div className="flex-1 p-6 overflow-y-auto space-y-4">
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex ${msg.sender === 'You' ? 'justify-end' : 'justify-start'}`}
-              >
-                {msg.sender !== 'You' && msg.sender !== 'System' && (
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-sm mr-2 flex-shrink-0 ${getSenderColor(msg.sender)}`}>
-                    {msg.sender.charAt(0)}
-                  </div>
-                )}
-                <div
-                  className={`max-w-md p-3 rounded-xl shadow-md ${
-                    msg.sender === 'You'
-                      ? 'bg-blue-500 text-white rounded-br-none'
-                      : msg.sender === 'System'
-                      ? 'bg-yellow-100 text-yellow-800 text-sm italic'
-                      : 'bg-gray-300 text-gray-800 rounded-bl-none'
-                  }`}
-                >
-                  {msg.sender !== 'System' && (
-                    <div className="font-bold text-sm mb-1">{msg.sender}</div>
-                  )}
-                  {msg.type === 'text' && (
-                    <p className="flex justify-between items-center gap-2">
-                      <span>{msg.content}</span>
-                      <button
-                        onClick={() => readMessageAloud(msg.content)}
-                        disabled={isPlayingAudio}
-                        className="p-1 bg-gray-200 hover:bg-gray-300 rounded-full text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="✨ Read Aloud"
-                      >
-                        <Volume2 size={16} />
-                      </button>
-                    </p>
-                  )}
-                  {msg.type === 'image' && (
-                    <div className="flex flex-col items-center">
-                      <img
-                        src={`https://placehold.co/200x150/E0F2F7/0288D1?text=Image`}
-                        alt="Sent Image"
-                        className="rounded-lg mb-2"
-                      />
-                      <span className="text-xs opacity-80">{msg.content} (Simulated)</span>
-                    </div>
-                  )}
-                  {msg.type === 'document' && (
-                    <div className="flex items-center space-x-2">
-                      <FileText size={24} className="text-gray-600" />
-                      <a href="#" className="text-blue-700 hover:underline">
-                        {msg.content} (Simulated)
-                      </a>
-                    </div>
-                  )}
-                  {msg.type === 'voice' && (
-                    <div className="flex items-center space-x-2">
-                      <Mic size={24} className="text-green-600" />
-                      <span className="text-sm">Voice Message: {msg.content} (Simulated)</span>
-                      {/* In a real app, this would be an audio player */}
-                    </div>
-                  )}
-                  {msg.type === 'video_call_start' && (
-                    <div className="flex items-center space-x-2 text-green-700">
-                      <PhoneCall size={20} />
-                      <span>{msg.content}</span>
-                    </div>
-                  )}
-                   {msg.type === 'video_call_end' && (
-                    <div className="flex items-center space-x-2 text-red-700">
-                      <PhoneOff size={20} />
-                      <span>{msg.content}</span>
-                    </div>
-                  )}
-                  {msg.type === 'notification' && (
-                    <p className="text-center text-sm">{msg.content}</p>
-                  )}
-                  <div className="text-right text-xs mt-1 opacity-75">{msg.timestamp}</div>
-                </div>
-                {msg.sender === 'You' && (
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-sm ml-2 flex-shrink-0 ${getSenderColor(msg.sender)}`}>
-                    {msg.sender.charAt(0)}
-                  </div>
-                )}
-              </div>
-            ))}
-            {isTyping && (
-              <div className="flex justify-start">
-                <div className="max-w-md p-2 rounded-xl bg-gray-200 text-gray-700 text-sm italic shadow-sm">
-                  Typing...
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} /> {/* Scroll target */}
-          </div>
-
-          {/* Message Input Area */}
-          <div className="p-4 bg-white border-t border-gray-200 shadow-inner rounded-tl-xl relative">
-            {showEmojiPicker && (
-              <div className="absolute bottom-full left-0 right-0 bg-white border border-gray-200 rounded-t-xl shadow-lg p-3 grid grid-cols-8 gap-2 mb-2">
-                {emojis.map((emoji, index) => (
-                  <button
-                    key={index}
-                    onClick={() => insertEmoji(emoji)}
-                    className="p-1 text-2xl hover:bg-gray-100 rounded-md transition-colors"
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {suggestedReply && (
-              <div className="mb-3 p-2 bg-blue-100 border border-blue-200 rounded-lg flex items-center justify-between text-blue-800 text-sm">
-                <span>✨ Suggested Reply: {suggestedReply}</span>
-                <button
-                  onClick={() => {
-                    setCurrentMessage(suggestedReply);
-                    setSuggestedReply('');
-                  }}
-                  className="ml-2 px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-                >
-                  Use
-                </button>
-              </div>
-            )}
-            <div className="flex items-center space-x-3">
-              <button
-                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                className="p-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-full shadow-lg transition-all duration-200"
-                title="Select Emoji"
-              >
-                <Smile size={20} />
-              </button>
-              <input
-                type="text"
-                value={currentMessage}
-                onChange={(e) => setCurrentMessage(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                placeholder="Type your message..."
-                className="flex-1 p-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all duration-200"
-              />
-              <button
-                onClick={sendMessage}
-                className="p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all duration-200"
-                title="Send Message"
-              >
-                <Send size={20} />
-              </button>
-              <button
-                onClick={() => handleFileUpload('image')}
-                className="p-3 bg-purple-600 hover:bg-purple-700 text-white rounded-full shadow-lg transition-all duration-200"
-                title="Send Image"
-              >
-                <Image size={20} />
-              </button>
-              <button
-                onClick={() => handleFileUpload('document')}
-                className="p-3 bg-orange-600 hover:bg-orange-700 text-white rounded-full shadow-lg transition-all duration-200"
-                title="Send Document"
-              >
-                <FileText size={20} />
-              </button>
-              <button
-                onClick={() => handleFileUpload('voice')}
-                className="p-3 bg-green-600 hover:bg-green-700 text-white rounded-full shadow-lg transition-all duration-200"
-                title="Send Voice Message"
-              >
-                <Mic size={20} />
-              </button>
-              <button
-                onClick={getSuggestedReply}
-                disabled={isGeneratingReply}
-                className="p-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-full shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="✨ Get Smart Reply"
-              >
-                {isGeneratingReply ? '...' : <Lightbulb size={20} />}
-              </button>
-            </div>
-          </div>
-        </main>
-      </div>
-
-      {/* Add Member Modal */}
-      {isAddingMember && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-xl shadow-2xl w-96 transform transition-all duration-300 scale-100">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-gray-800">Add New Member</h2>
-              <button
-                onClick={() => setIsAddingMember(false)}
-                className="p-2 rounded-full hover:bg-gray-200 transition-all duration-200"
-              >
-                <X size={20} className="text-gray-600" />
-              </button>
-            </div>
-            <input
-              type="text"
-              value={newMemberName}
-              onChange={(e) => setNewMemberName(e.target.value)}
-              placeholder="Enter member's name"
-              className="w-full p-3 border border-gray-300 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-400"
-            />
-            <button
-              onClick={addMember}
-              className="w-full p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-all duration-200"
-            >
-              <Plus size={20} className="inline-block mr-2" /> Add Member
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Video Call Overlay */}
-      {isCallActive && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 flex flex-col items-center justify-center z-40">
-          <div className="text-white text-3xl font-bold mb-8 flex items-center space-x-3">
-            <PhoneCall size={36} className="animate-pulse" />
-            <span>Simulating Group Video Call...</span>
-          </div>
-          <div className="grid grid-cols-2 gap-4 w-3/4 h-3/4">
-            {/* Simulated video feeds */}
-            <div className="bg-gray-800 rounded-xl flex items-center justify-center text-gray-400 text-lg shadow-lg">
-              <Video size={48} /> Your Feed
-            </div>
-            <div className="bg-gray-800 rounded-xl flex items-center justify-center text-gray-400 text-lg shadow-lg">
-              <Video size={48} /> Alice's Feed
-            </div>
-            <div className="bg-gray-800 rounded-xl flex items-center justify-center text-gray-400 text-lg shadow-lg">
-              <Video size={48} /> Bob's Feed
-            </div>
-            <div className="bg-gray-800 rounded-xl flex items-center justify-center text-gray-400 text-lg shadow-lg">
-              <Video size={48} /> Charlie's Feed
-            </div>
-          </div>
-          <button
-            onClick={endVideoCall}
-            className="mt-8 p-4 bg-red-600 hover:bg-red-700 text-white rounded-full shadow-xl transition-all duration-200 flex items-center space-x-2"
-          >
-            <PhoneOff size={24} />
-            <span>End Call</span>
-          </button>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default App;
- audio
-const base64ToArrayBuffer = (base64) => {
-  const binaryString = window.atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes.buffer;
-};
-
-// Helper function to convert PCM audio data to WAV format
-const pcmToWav = (pcmData, sampleRate) => {
-  const pcm16 = new Int16Array(pcmData);
-  const numChannels = 1;
-  const bitsPerSample = 16;
-  const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
-  const blockAlign = numChannels * (bitsPerSample / 8);
-  const dataSize = pcm16.length * (bitsPerSample / 8);
-
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
-
-  // RIFF chunk descriptor
-  writeString(view, 0, 'RIFF');
-  view.setUint32(4, 36 + dataSize, true);
-  writeString(view, 8, 'WAVE');
-
-  // FMT sub-chunk
-  writeString(view, 12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // AudioFormat: 1 for PCM
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, byteRate, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, bitsPerSample, true);
-
-  // DATA sub-chunk
-  writeString(view, 36, 'data');
-  view.setUint32(40, dataSize, true);
-
-  // Write PCM data
-  for (let i = 0; i < pcm16.length; i++) {
-    view.setInt16(44 + i * 2, pcm16[i], true);
-  }
-
-  return new Blob([view], { type: 'audio/wav' });
-};
-
-const writeString = (view, offset, string) => {
-  for (let i = 0; i < string.length; i++) {
-    view.setUint8(offset + i, string.charCodeAt(i));
-  }
-};
-
-// Main App Component
-const App = () => {
-  // State for messages in the chat
-  const [messages, setMessages] = useState([]);
-  // State for the current text message being typed
-  const [currentMessage, setCurrentMessage] = useState('');
-  // State for group members (simulated)
-  const [groupMembers, setGroupMembers] = useState(['Alice', 'Bob', 'Charlie']);
-  // State to control the "add member" modal visibility
-  const [isAddingMember, setIsAddingMember] = useState(false);
-  // State for the new member's name input
-  const [newMemberName, setNewMemberName] = useState('');
-  // State to simulate an active video call
-  const [isCallActive, setIsCallActive] = useState(false);
-  // Ref for auto-scrolling to the bottom of the chat
-  const messagesEndRef = useRef(null);
-
-  // States for Gemini API features
-  const [isSummarizing, setIsSummarizing] = useState(false);
-  const [suggestedReply, setSuggestedReply] = useState('');
-  const [isGeneratingReply, setIsGeneratingReply] = useState(false);
-  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
-
-  // New state for emoji picker visibility
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  // New state for typing indicator simulation
-  const [isTyping, setIsTyping] = useState(false);
-
-  // Common Emojis for the picker
-  const emojis = ['😀', '😂', '😍', '👍', '🙏', '🎉', '🚀', '💡', '❤️', '🔥', '😊', '😎', '🥳', '🤩', '🤔', '💬'];
-
-  // Gemini API Key (Canvas will inject this at runtime)
-  const apiKey = "";
-
-  // Scroll to the bottom of the chat whenever messages change
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  // Simulate typing indicator
-  useEffect(() => {
-    let typingTimeout;
-    if (currentMessage.length > 0) {
-      setIsTyping(true);
-      typingTimeout = setTimeout(() => {
-        setIsTyping(false);
-      }, 1500); // Typing indicator shows for 1.5 seconds after last key press
-    } else {
-      setIsTyping(false);
-      clearTimeout(typingTimeout);
-    }
-    return () => clearTimeout(typingTimeout);
-  }, [currentMessage]);
-
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  // Function to send a text message
-  const sendMessage = () => {
-    if (currentMessage.trim()) {
-      const newMessage = {
-        id: Date.now(),
-        sender: 'You', // In a real app, this would be the authenticated user
-        type: 'text',
-        content: currentMessage.trim(),
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages((prevMessages) => [...prevMessages, newMessage]);
-      setCurrentMessage(''); // Clear input field
-      setSuggestedReply(''); // Clear any pending suggestions
-      setShowEmojiPicker(false); // Close emoji picker after sending
-    }
-  };
-
-  // Function to insert emoji into message input
-  const insertEmoji = (emoji) => {
-    setCurrentMessage((prevMsg) => prevMsg + emoji);
-  };
-
-  // Simulated function for handling file uploads (images, documents, voice)
-  const handleFileUpload = (type) => {
-    const fileName = `example_${type}_${Date.now()}.${type === 'image' ? 'png' : type === 'document' ? 'pdf' : 'mp3'}`;
-    const newMessage = {
-      id: Date.now(),
-      sender: 'You',
-      type: type,
-      content: fileName, // In a real app, this would be a URL
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-    setMessages((prevMessages) => [...prevMessages, newMessage]);
-  };
-
-  // Function to add a new member to the group
-  const addMember = () => {
-    if (newMemberName.trim() && !groupMembers.includes(newMemberName.trim())) {
-      setGroupMembers((prevMembers) => [...prevMembers, newMemberName.trim()]);
-      setNewMemberName('');
-      setIsAddingMember(false); // Close modal
-      const notificationMessage = {
-        id: Date.now(),
-        sender: 'System',
-        type: 'notification',
-        content: `${newMemberName.trim()} has been added to the group.`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages((prevMessages) => [...prevMessages, notificationMessage]);
-    }
-  };
-
-  // Function to simulate starting a video call
-  const startVideoCall = () => {
-    setIsCallActive(true);
-    const callMessage = {
-      id: Date.now(),
-      sender: 'System',
-      type: 'video_call_start',
-      content: 'Video call started!',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-    setMessages((prevMessages) => [...prevMessages, callMessage]);
-  };
-
-  // Function to simulate ending a video call
-  const endVideoCall = () => {
-    setIsCallActive(false);
-    const callEndMessage = {
-      id: Date.now(),
-      sender: 'System',
-      type: 'video_call_end',
-      content: 'Video call ended.',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-    setMessages((prevMessages) => [...prevMessages, callEndMessage]);
-  };
-
-  // ✨ Gemini API Integration: Summarize Chat
-  const summarizeChat = async () => {
-    setIsSummarizing(true);
-    try {
-      // Filter out system messages and format for LLM
-      const chatHistoryForLLM = messages
-        .filter(msg => msg.type === 'text')
-        .map(msg => `${msg.sender}: ${msg.content}`)
-        .join('\n');
-
-      if (!chatHistoryForLLM) {
-        setMessages(prev => [...prev, { id: Date.now(), sender: 'System', type: 'notification', content: 'No text messages to summarize.', timestamp: new Date().toLocaleTimeString() }]);
-        setIsSummarizing(false);
-        return;
-      }
-
-      const prompt = `Summarize the following chat conversation:\n\n${chatHistoryForLLLLM}\n\nSummary:`;
-
-      let chatHistory = [];
-      chatHistory.push({ role: "user", parts: [{ text: prompt }] });
-      const payload = { contents: chatHistory };
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const result = await response.json();
-
-      if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
-        const summaryText = result.candidates[0].content.parts[0].text;
-        setMessages(prev => [...prev, {
-          id: Date.now(),
-          sender: 'System',
-          type: 'notification',
-          content: `✨ Chat Summary: ${summaryText}`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        }]);
-      } else {
-        setMessages(prev => [...prev, { id: Date.now(), sender: 'System', type: 'notification', content: 'Failed to generate summary.', timestamp: new Date().toLocaleTimeString() }]);
-      }
-    } catch (error) {
-      console.error('Error summarizing chat:', error);
-      setMessages(prev => [...prev, { id: Date.now(), sender: 'System', type: 'notification', content: 'Error summarizing chat. Please try again.', timestamp: new Date().toLocaleTimeString() }]);
-    } finally {
-      setIsSummarizing(false);
-    }
-  };
-
-  // ✨ Gemini API Integration: Get Smart Reply Suggestion
-  const getSuggestedReply = async () => {
-    setIsGeneratingReply(true);
-    setSuggestedReply(''); // Clear previous suggestion
-    try {
-      // Get last 5 text messages for context
-      const recentMessages = messages
-        .filter(msg => msg.type === 'text')
-        .slice(-5)
-        .map(msg => `${msg.sender}: ${msg.content}`)
-        .join('\n');
-
-      if (!recentMessages) {
-        setSuggestedReply('No recent messages for a suggestion.');
-        setIsGeneratingReply(false);
-        return;
-      }
-
-      const prompt = `Based on the following recent chat conversation, suggest a concise and appropriate reply. Do not include sender names in the reply.
-      \n\nConversation:\n${recentMessages}\n\nSuggested Reply:`;
-
-      let chatHistory = [];
-      chatHistory.push({ role: "user", parts: [{ text: prompt }] });
-      const payload = { contents: chatHistory };
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const result = await response.json();
-
-      if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
-        setSuggestedReply(result.candidates[0].content.parts[0].text);
-      } else {
-        setSuggestedReply('Could not generate a suggestion.');
-      }
-    } catch (error) {
-      console.error('Error generating reply:', error);
-      setSuggestedReply('Error generating reply.');
-    } finally {
-      setIsGeneratingReply(false);
-    }
-  };
-
-  // ✨ Gemini API Integration: Read Message Aloud (TTS)
-  const readMessageAloud = async (textToSpeak) => {
-    if (isPlayingAudio) return; // Prevent multiple audio plays
-    setIsPlayingAudio(true);
-
-    try {
-      const payload = {
-        contents: [{
-          parts: [{ text: textToSpeak }]
-        }],
-        generationConfig: {
-          responseModalities: ["AUDIO"],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: "Kore" } // Using Kore voice
+        /* Responsive adjustments for wheel size */
+        @media (max-width: 767px) {
+            .wheel-container {
+                width: 250px;
+                height: 250px;
             }
-          }
-        },
-        model: "gemini-2.5-flash-preview-tts"
-      };
+            .wheel-segment {
+                font-size: 12px;
+            }
+            .pointer {
+                font-size: 40px;
+                top: -20px;
+            }
+            .result-display {
+                font-size: 1.75rem;
+            }
+        }
 
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const result = await response.json();
+        /* Modal styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
 
-      const part = result?.candidates?.[0]?.content?.parts?.[0];
-      const audioData = part?.inlineData?.data;
-      const mimeType = part?.inlineData?.mimeType;
+        .modal-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
 
-      if (audioData && mimeType && mimeType.startsWith("audio/L16")) {
-        const sampleRateMatch = mimeType.match(/rate=(\d+)/);
-        const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 16000; // Default to 16kHz if not found
+        .modal-content {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            width: 90%;
+            max-width: 400px;
+            transform: translateY(-20px);
+            transition: transform 0.3s ease;
+        }
 
-        const pcmData = base64ToArrayBuffer(audioData);
-        const wavBlob = pcmToWav(pcmData, sampleRate);
-        const audioUrl = URL.createObjectURL(wavBlob);
+        .modal-overlay.show .modal-content {
+            transform: translateY(0);
+        }
 
-        const audio = new Audio(audioUrl);
-        audio.play();
-        audio.onended = () => {
-          setIsPlayingAudio(false);
-          URL.revokeObjectURL(audioUrl); // Clean up the URL
-        };
-      } else {
-        console.error('TTS API response error or no audio data:', result);
-        alert('Failed to play audio. No valid audio data received.');
-        setIsPlayingAudio(false);
-      }
-    } catch (error) {
-      console.error('Error playing audio:', error);
-      alert('Error playing audio. Please check console for details.');
-      setIsPlayingAudio(false);
-    }
-  };
+        .modal-content input {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
 
-  // Function to get a consistent color for sender initials
-  const getSenderColor = (sender) => {
-    const colors = ['bg-red-400', 'bg-green-400', 'bg-purple-400', 'bg-orange-400', 'bg-teal-400', 'bg-pink-400'];
-    let hash = 0;
-    for (let i = 0; i < sender.length; i++) {
-      hash = sender.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const index = Math.abs(hash % colors.length);
-    return colors[index];
-  };
+        .modal-content button {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s ease, transform 0.2s ease;
+        }
 
+        .modal-content .error-message {
+            color: #ef4444;
+            font-size: 0.9rem;
+            margin-top: -10px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-5 flex items-center justify-center min-h-screen">
+    <div class="container bg-white rounded-3xl shadow-xl p-8 md:p-12 flex flex-col md:flex-row gap-8 items-center md:items-start">
 
-  return (
-    <div className="flex flex-col h-screen bg-gray-100 font-inter antialiased">
-      {/* Header */}
-      <header className="bg-gradient-to-r from-blue-600 to-purple-700 text-white p-4 shadow-lg flex items-center justify-between rounded-b-xl">
-        <h1 className="text-2xl font-bold">Chat App (Simulation)</h1>
-        <div className="flex space-x-4">
-          <button
-            onClick={() => setIsAddingMember(true)}
-            className="p-2 bg-blue-500 hover:bg-blue-400 rounded-full shadow-md transition-all duration-200"
-            title="Add Member"
-          >
-            <Users size={20} />
-          </button>
-          <button
-            onClick={summarizeChat}
-            disabled={isSummarizing}
-            className="p-2 bg-indigo-500 hover:bg-indigo-400 text-white rounded-full shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="✨ Summarize Chat"
-          >
-            {isSummarizing ? '...' : <BookText size={20} />}
-          </button>
-          {!isCallActive ? (
-            <button
-              onClick={startVideoCall}
-              className="p-2 bg-green-500 hover:bg-green-400 rounded-full shadow-md transition-all duration-200"
-              title="Start Video Call"
-            >
-              <Video size={20} />
-            </button>
-          ) : (
-            <button
-              onClick={endVideoCall}
-              className="p-2 bg-red-500 hover:bg-red-400 rounded-full shadow-md transition-all duration-200"
-              title="End Video Call"
-            >
-              <PhoneOff size={20} />
-            </button>
-          )}
+        <!-- Language Selector -->
+        <div class="absolute top-4 right-4 z-50">
+            <select id="languageSelector" class="p-2 rounded-md border border-gray-300 bg-white shadow-sm">
+                <option value="en">English</option>
+                <option value="fr">Français</option>
+            </select>
         </div>
-      </header>
 
-      {/* Main Content Area */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar for Group Members */}
-        <aside className="w-1/4 bg-white p-4 border-r border-gray-200 shadow-inner rounded-br-xl overflow-y-auto">
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">Group Members</h2>
-          <ul className="space-y-2">
-            {groupMembers.map((member, index) => (
-              <li key={index} className="flex items-center p-2 bg-gray-50 rounded-lg shadow-sm">
-                <div className="w-8 h-8 bg-blue-200 text-blue-800 rounded-full flex items-center justify-center font-bold mr-3">
-                  {member.charAt(0)}
-                </div>
-                <span className="text-gray-700">{member}</span>
-              </li>
-            ))}
-          </ul>
-        </aside>
+        <!-- Participant Input Section -->
+        <div class="input-section w-full md:w-1/2 p-6 bg-blue-50 rounded-2xl shadow-md">
+            <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center" data-i18n="addParticipantsTitle">Add Participants</h2>
 
-        {/* Chat Area */}
-        <main className="flex-1 flex flex-col bg-gray-50 rounded-bl-xl">
-          <div className="flex-1 p-6 overflow-y-auto space-y-4">
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex ${msg.sender === 'You' ? 'justify-end' : 'justify-start'}`}
-              >
-                {msg.sender !== 'You' && msg.sender !== 'System' && (
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-sm mr-2 flex-shrink-0 ${getSenderColor(msg.sender)}`}>
-                    {msg.sender.charAt(0)}
-                  </div>
-                )}
-                <div
-                  className={`max-w-md p-3 rounded-xl shadow-md ${
-                    msg.sender === 'You'
-                      ? 'bg-blue-500 text-white rounded-br-none'
-                      : msg.sender === 'System'
-                      ? 'bg-yellow-100 text-yellow-800 text-sm italic'
-                      : 'bg-gray-300 text-gray-800 rounded-bl-none'
-                  }`}
-                >
-                  {msg.sender !== 'System' && (
-                    <div className="font-bold text-sm mb-1">{msg.sender}</div>
-                  )}
-                  {msg.type === 'text' && (
-                    <p className="flex justify-between items-center gap-2">
-                      <span>{msg.content}</span>
-                      <button
-                        onClick={() => readMessageAloud(msg.content)}
-                        disabled={isPlayingAudio}
-                        className="p-1 bg-gray-200 hover:bg-gray-300 rounded-full text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="✨ Read Aloud"
-                      >
-                        <Volume2 size={16} />
-                      </button>
-                    </p>
-                  )}
-                  {msg.type === 'image' && (
-                    <div className="flex flex-col items-center">
-                      <img
-                        src={`https://placehold.co/200x150/E0F2F7/0288D1?text=Image`}
-                        alt="Sent Image"
-                        className="rounded-lg mb-2"
-                      />
-                      <span className="text-xs opacity-80">{msg.content} (Simulated)</span>
-                    </div>
-                  )}
-                  {msg.type === 'document' && (
-                    <div className="flex items-center space-x-2">
-                      <FileText size={24} className="text-gray-600" />
-                      <a href="#" className="text-blue-700 hover:underline">
-                        {msg.content} (Simulated)
-                      </a>
-                    </div>
-                  )}
-                  {msg.type === 'voice' && (
-                    <div className="flex items-center space-x-2">
-                      <Mic size={24} className="text-green-600" />
-                      <span className="text-sm">Voice Message: {msg.content} (Simulated)</span>
-                      {/* In a real app, this would be an audio player */}
-                    </div>
-                  )}
-                  {msg.type === 'video_call_start' && (
-                    <div className="flex items-center space-x-2 text-green-700">
-                      <PhoneCall size={20} />
-                      <span>{msg.content}</span>
-                    </div>
-                  )}
-                   {msg.type === 'video_call_end' && (
-                    <div className="flex items-center space-x-2 text-red-700">
-                      <PhoneOff size={20} />
-                      <span>{msg.content}</span>
-                    </div>
-                  )}
-                  {msg.type === 'notification' && (
-                    <p className="text-center text-sm">{msg.content}</p>
-                  )}
-                  <div className="text-right text-xs mt-1 opacity-75">{msg.timestamp}</div>
-                </div>
-                {msg.sender === 'You' && (
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-sm ml-2 flex-shrink-0 ${getSenderColor(msg.sender)}`}>
-                    {msg.sender.charAt(0)}
-                  </div>
-                )}
-              </div>
-            ))}
-            {isTyping && (
-              <div className="flex justify-start">
-                <div className="max-w-md p-2 rounded-xl bg-gray-200 text-gray-700 text-sm italic shadow-sm">
-                  Typing...
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} /> {/* Scroll target */}
-          </div>
+            <!-- Mode Selector -->
+            <div class="flex justify-center gap-4 mb-6">
+                <label class="inline-flex items-center">
+                    <input type="radio" name="mode" value="names" checked class="form-radio h-5 w-5 text-blue-600">
+                    <span class="ml-2 text-gray-700 font-medium" data-i18n="namesLabel">Names</span>
+                </label>
+                <label class="inline-flex items-center">
+                    <input type="radio" name="mode" value="numbers" class="form-radio h-5 w-5 text-purple-600">
+                    <span class="ml-2 text-gray-700 font-medium" data-i18n="numbersLabel">Numbers</span>
+                </label>
+            </div>
 
-          {/* Message Input Area */}
-          <div className="p-4 bg-white border-t border-gray-200 shadow-inner rounded-tl-xl relative">
-            {showEmojiPicker && (
-              <div className="absolute bottom-full left-0 right-0 bg-white border border-gray-200 rounded-t-xl shadow-lg p-3 grid grid-cols-8 gap-2 mb-2">
-                {emojis.map((emoji, index) => (
-                  <button
-                    key={index}
-                    onClick={() => insertEmoji(emoji)}
-                    className="p-1 text-2xl hover:bg-gray-100 rounded-md transition-colors"
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {suggestedReply && (
-              <div className="mb-3 p-2 bg-blue-100 border border-blue-200 rounded-lg flex items-center justify-between text-blue-800 text-sm">
-                <span>✨ Suggested Reply: {suggestedReply}</span>
-                <button
-                  onClick={() => {
-                    setCurrentMessage(suggestedReply);
-                    setSuggestedReply('');
-                  }}
-                  className="ml-2 px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-                >
-                  Use
+            <textarea id="participantsInput"
+                      class="w-full h-40 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200 resize-y"
+                      data-i18n-placeholder="namesPlaceholder"
+                      placeholder="Enter names here, one per line or separated by commas (e.g., John, Mary, Peter)"></textarea>
+            <div class="flex flex-col sm:flex-row gap-4 mt-6">
+                <button id="addParticipantsBtn"
+                        class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-xl shadow-lg transform hover:scale-105 transition duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75"
+                        data-i18n="addParticipantsBtn">
+                    <i class="fas fa-plus-circle mr-2"></i> Add Participants
                 </button>
-              </div>
-            )}
-            <div className="flex items-center space-x-3">
-              <button
-                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                className="p-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-full shadow-lg transition-all duration-200"
-                title="Select Emoji"
-              >
-                <Smile size={20} />
-              </button>
-              <input
-                type="text"
-                value={currentMessage}
-                onChange={(e) => setCurrentMessage(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                placeholder="Type your message..."
-                className="flex-1 p-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all duration-200"
-              />
-              <button
-                onClick={sendMessage}
-                className="p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all duration-200"
-                title="Send Message"
-              >
-                <Send size={20} />
-              </button>
-              <button
-                onClick={() => handleFileUpload('image')}
-                className="p-3 bg-purple-600 hover:bg-purple-700 text-white rounded-full shadow-lg transition-all duration-200"
-                title="Send Image"
-              >
-                <Image size={20} />
-              </button>
-              <button
-                onClick={() => handleFileUpload('document')}
-                className="p-3 bg-orange-600 hover:bg-orange-700 text-white rounded-full shadow-lg transition-all duration-200"
-                title="Send Document"
-              >
-                <FileText size={20} />
-              </button>
-              <button
-                onClick={() => handleFileUpload('voice')}
-                className="p-3 bg-green-600 hover:bg-green-700 text-white rounded-full shadow-lg transition-all duration-200"
-                title="Send Voice Message"
-              >
-                <Mic size={20} />
-              </button>
-              <button
-                onClick={getSuggestedReply}
-                disabled={isGeneratingReply}
-                className="p-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-full shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="✨ Get Smart Reply"
-              >
-                {isGeneratingReply ? '...' : <Lightbulb size={20} />}
-              </button>
+                <button id="clearParticipantsBtn"
+                        class="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-6 rounded-xl shadow-lg transform hover:scale-105 transition duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-opacity-75"
+                        data-i18n="clearAllBtn">
+                    <i class="fas fa-trash-alt mr-2"></i> Clear All
+                </button>
             </div>
-          </div>
-        </main>
-      </div>
+            <p id="participantCount" class="text-gray-600 text-sm mt-4 text-center">0 participant(s) added.</p>
+        </div>
 
-      {/* Add Member Modal */}
-      {isAddingMember && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-xl shadow-2xl w-96 transform transition-all duration-300 scale-100">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-gray-800">Add New Member</h2>
-              <button
-                onClick={() => setIsAddingMember(false)}
-                className="p-2 rounded-full hover:bg-gray-200 transition-all duration-200"
-              >
-                <X size={20} className="text-gray-600" />
-              </button>
+        <!-- Wheel Section -->
+        <div class="wheel-section w-full md:w-1/2 p-6 bg-purple-50 rounded-2xl shadow-md flex flex-col items-center justify-center">
+            <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center" data-i18n="wheelTitle">Wheel of Fortune</h2>
+            <div class="wheel-container relative">
+                <div id="wheel" class="w-full h-full rounded-full relative transition-transform duration-600 ease-out">
+                    <!-- Segments will be generated here by JavaScript -->
+                </div>
+                <i class="fas fa-caret-up pointer"></i> <!-- Pointer to indicate the winner -->
             </div>
-            <input
-              type="text"
-              value={newMemberName}
-              onChange={(e) => setNewMemberName(e.target.value)}
-              placeholder="Enter member's name"
-              className="w-full p-3 border border-gray-300 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-400"
-            />
-            <button
-              onClick={addMember}
-              className="w-full p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-all duration-200"
-            >
-              <Plus size={20} className="inline-block mr-2" /> Add Member
+            <button id="spinBtn"
+                    class="mt-8 bg-green-500 hover:bg-green-600 text-white font-extrabold py-4 px-10 rounded-full shadow-xl transform hover:scale-110 transition duration-300 ease-in-out focus:outline-none focus:ring-4 focus:ring-green-400 focus:ring-opacity-75 text-xl uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
+                    data-i18n="spinBtn">
+                <i class="fas fa-dice-one mr-3"></i> Spin the Wheel!
             </button>
-          </div>
-        </div>
-      )}
 
-      {/* Video Call Overlay */}
-      {isCallActive && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 flex flex-col items-center justify-center z-40">
-          <div className="text-white text-3xl font-bold mb-8 flex items-center space-x-3">
-            <PhoneCall size={36} className="animate-pulse" />
-            <span>Simulating Group Video Call...</span>
-          </div>
-          <div className="grid grid-cols-2 gap-4 w-3/4 h-3/4">
-            {/* Simulated video feeds */}
-            <div className="bg-gray-800 rounded-xl flex items-center justify-center text-gray-400 text-lg shadow-lg">
-              <Video size={48} /> Your Feed
+            <!-- Result Display -->
+            <div id="resultDisplay" class="result-display hidden">
+                <span id="winnerValue"></span>
             </div>
-            <div className="bg-gray-800 rounded-xl flex items-center justify-center text-gray-400 text-lg shadow-lg">
-              <Video size={48} /> Alice's Feed
-            </div>
-            <div className="bg-gray-800 rounded-xl flex items-center justify-center text-gray-400 text-lg shadow-lg">
-              <Video size={48} /> Bob's Feed
-            </div>
-            <div className="bg-gray-800 rounded-xl flex items-center justify-center text-gray-400 text-lg shadow-lg">
-              <Video size={48} /> Charlie's Feed
-            </div>
-          </div>
-          <button
-            onClick={endVideoCall}
-            className="mt-8 p-4 bg-red-600 hover:bg-red-700 text-white rounded-full shadow-xl transition-all duration-200 flex items-center space-x-2"
-          >
-            <PhoneOff size={24} />
-            <span>End Call</span>
-          </button>
+
+            <!-- Export Excel Button -->
+            <button id="exportExcelBtn"
+                    class="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl shadow-lg transform hover:scale-105 transition duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-75 disabled:opacity-50 disabled:cursor-not-allowed"
+                    data-i18n="exportExcelBtn">
+                <i class="fas fa-file-excel mr-2"></i> Export to Excel
+            </button>
+
+            <!-- Settings Button (to change password) -->
+            <button id="settingsBtn"
+                    class="mt-4 bg-gray-500 hover:bg-gray-600 text-white font-semibold py-3 px-6 rounded-xl shadow-lg transform hover:scale-105 transition duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75"
+                    data-i18n="settingsBtn">
+                <i class="fas fa-cog mr-2"></i> Settings
+            </button>
         </div>
-      )}
     </div>
-  );
-};
 
-export default App;
+    <!-- Modal for password input for export -->
+    <div id="passwordModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3 class="text-2xl font-bold text-gray-800 mb-4 text-center" data-i18n="passwordRequiredTitle">Password Required</h3>
+            <p class="text-gray-600 mb-4 text-center" data-i18n="passwordRequiredMsg">Please enter the password to export the Excel file.</p>
+            <input type="password" id="exportPasswordInput" data-i18n-placeholder="passwordPlaceholder" placeholder="Password" class="mb-3">
+            <p id="passwordErrorMsg" class="error-message hidden" data-i18n="incorrectPassword">Incorrect password.</p>
+            <div class="flex justify-end gap-3 mt-4">
+                <button id="passwordCancelBtn" class="bg-gray-300 hover:bg-gray-400 text-gray-800" data-i18n="cancelBtn">Cancel</button>
+                <button id="passwordSubmitBtn" class="bg-blue-600 hover:bg-blue-700 text-white" data-i18n="confirmBtn">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for changing password -->
+    <div id="changePasswordModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3 class="text-2xl font-bold text-gray-800 mb-4 text-center" data-i18n="changePasswordTitle">Change Password</h3>
+            <input type="password" id="newPasswordInput" data-i18n-placeholder="newPasswordPlaceholder" placeholder="New Password" class="mb-3">
+            <input type="password" id="confirmNewPasswordInput" data-i18n-placeholder="confirmNewPasswordPlaceholder" placeholder="Confirm New Password" class="mb-3">
+            <p id="changePasswordErrorMsg" class="error-message hidden" data-i18n="passwordMismatch">Passwords do not match or are empty.</p>
+            <div class="flex justify-end gap-3 mt-4">
+                <button id="changePasswordCancelBtn" class="bg-gray-300 hover:bg-gray-400 text-gray-800" data-i18n="cancelBtn">Cancel</button>
+                <button id="changePasswordSubmitBtn" class="bg-blue-600 hover:bg-blue-700 text-white" data-i18n="changeBtn">Change</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Confirmation Modal for Clear All -->
+    <div id="confirmationModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3 class="text-2xl font-bold text-gray-800 mb-4 text-center" data-i18n="clearConfirmationTitle">Confirm Clear All</h3>
+            <p class="text-gray-600 mb-4 text-center" data-i18n="clearConfirmationMessage">Are you sure you want to clear all participants and history?</p>
+            <div class="flex justify-end gap-3 mt-4">
+                <button id="confirmCancelBtn" class="bg-gray-300 hover:bg-gray-400 text-gray-800" data-i18n="cancelBtn">Cancel</button>
+                <button id="confirmYesBtn" class="bg-red-500 hover:bg-red-600 text-white" data-i18n="confirmBtn">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Array to store participants (names or numbers)
+        let participants = [];
+        // Variable to store the current rotation of the wheel
+        let currentRotation = 0;
+        // Flag to indicate if the wheel is spinning
+        let isSpinning = false;
+        // Current drawing mode: 'names' or 'numbers'
+        let drawingMode = 'names';
+        // Array to store winning history for Excel export
+        let winnerHistory = [];
+        // Export password (default value)
+        let exportPassword = "admin123"; // Default password
+        // Current language, default to English
+        let currentLanguage = 'en';
+
+        // Translation object
+        const translations = {
+            en: {
+                appTitle: "Lottery System",
+                addParticipantsTitle: "Add Participants",
+                wheelTitle: "Wheel of Fortune",
+                namesLabel: "Names",
+                numbersLabel: "Numbers",
+                namesPlaceholder: "Enter names here, one per line or separated by commas (e.g., John, Mary, Peter)",
+                numbersPlaceholder: "Enter numbers here, one per line or separated by commas (e.g., 1, 5, 10)",
+                addParticipantsBtn: "Add Participants",
+                clearAllBtn: "Clear All",
+                spinBtn: "Spin the Wheel!",
+                exportExcelBtn: "Export to Excel",
+                settingsBtn: "Settings",
+                participantCountPrefix: "0 participant(s) added.", // Dynamic part will be handled by JS
+                participantCountSuffix: " participant(s) added.",
+                passwordRequiredTitle: "Password Required",
+                passwordRequiredMsg: "Please enter the password to export the Excel file.",
+                passwordPlaceholder: "Password",
+                incorrectPassword: "Incorrect password.",
+                cancelBtn: "Cancel",
+                confirmBtn: "Confirm",
+                changePasswordTitle: "Change Password",
+                newPasswordPlaceholder: "New Password",
+                confirmNewPasswordPlaceholder: "Confirm New Password",
+                passwordMismatch: "Passwords do not match or are empty.",
+                passwordEmpty: "Passwords cannot be empty.",
+                passwordsDoNotMatch: "Passwords do not match.",
+                changeBtn: "Change",
+                excelHeaders: ["Winning Value", "Draw Date", "Slogan"],
+                winningSlogan: "Congratulations to the winner!",
+                noDrawsToExport: "No draws have been made to export.",
+                invalidNumbersWarning: "Some entries were not valid numbers and have been ignored.",
+                clearConfirmationTitle: "Confirm Clear All",
+                clearConfirmationMessage: "Are you sure you want to clear all participants and history?"
+            },
+            fr: {
+                appTitle: "Système de Tirage",
+                addParticipantsTitle: "Ajouter les Participants",
+                wheelTitle: "La Roue du Destin",
+                namesLabel: "Noms",
+                numbersLabel: "Chiffres",
+                namesPlaceholder: "Entrez les noms ici, un par ligne ou séparés par des virgules (ex: Jean, Marie, Pierre)",
+                numbersPlaceholder: "Entrez les chiffres ici, un par ligne ou séparés par des virgules (ex: 1, 5, 10)",
+                addParticipantsBtn: "Ajouter les Participants",
+                clearAllBtn: "Effacer tout",
+                spinBtn: "Lancer le Tirage !",
+                exportExcelBtn: "Exporter en Excel",
+                settingsBtn: "Paramètres",
+                participantCountPrefix: "0 participant(s) ajouté(s).",
+                participantCountSuffix: " participant(s) ajouté(s).",
+                passwordRequiredTitle: "Mot de passe requis",
+                passwordRequiredMsg: "Veuillez entrer le mot de passe pour exporter le fichier Excel.",
+                passwordPlaceholder: "Mot de passe",
+                incorrectPassword: "Mot de passe incorrect.",
+                cancelBtn: "Annuler",
+                confirmBtn: "Confirmer",
+                changePasswordTitle: "Changer le mot de passe",
+                newPasswordPlaceholder: "Nouveau mot de passe",
+                confirmNewPasswordPlaceholder: "Confirmer le nouveau mot de passe",
+                passwordMismatch: "Les mots de passe ne correspondent pas ou sont vides.",
+                passwordEmpty: "Les mots de passe ne peuvent pas être vides.",
+                passwordsDoNotMatch: "Les mots de passe ne correspondent pas.",
+                changeBtn: "Changer",
+                excelHeaders: ["Valeur Gagnante", "Date du Tirage", "Slogan"],
+                winningSlogan: "Félicitations au gagnant !",
+                noDrawsToExport: "Aucun tirage n'a été effectué pour exporter.",
+                invalidNumbersWarning: "Certaines entrées n'étaient pas des nombres valides et ont été ignorées.",
+                clearConfirmationTitle: "Confirmer l'Effacement",
+                clearConfirmationMessage: "Êtes-vous sûr de vouloir effacer tous les participants et l'historique ?"
+            }
+        };
+
+        // DOM elements
+        const languageSelector = document.getElementById('languageSelector');
+        const participantsInput = document.getElementById('participantsInput');
+        const addParticipantsBtn = document.getElementById('addParticipantsBtn');
+        const clearParticipantsBtn = document.getElementById('clearParticipantsBtn');
+        const participantCountDisplay = document.getElementById('participantCount');
+        const wheel = document.getElementById('wheel');
+        const spinBtn = document.getElementById('spinBtn');
+        const resultDisplay = document.getElementById('resultDisplay');
+        const winnerValueDisplay = document.getElementById('winnerValue');
+        const exportExcelBtn = document.getElementById('exportExcelBtn');
+        const modeRadios = document.querySelectorAll('input[name="mode"]');
+        const settingsBtn = document.getElementById('settingsBtn');
+
+        // Password Modal elements
+        const passwordModal = document.getElementById('passwordModal');
+        const exportPasswordInput = document.getElementById('exportPasswordInput');
+        const passwordSubmitBtn = document.getElementById('passwordSubmitBtn');
+        const passwordCancelBtn = document.getElementById('passwordCancelBtn');
+        const passwordErrorMsg = document.getElementById('passwordErrorMsg');
+
+        // Change Password Modal elements
+        const changePasswordModal = document.getElementById('changePasswordModal');
+        const newPasswordInput = document.getElementById('newPasswordInput');
+        const confirmNewPasswordInput = document.getElementById('confirmNewPasswordInput');
+        const changePasswordSubmitBtn = document.getElementById('changePasswordSubmitBtn');
+        const changePasswordCancelBtn = document.getElementById('changePasswordCancelBtn');
+        const changePasswordErrorMsg = document.getElementById('changePasswordErrorMsg');
+
+        // Confirmation Modal elements for Clear All
+        const confirmationModal = document.getElementById('confirmationModal');
+        const confirmYesBtn = document.getElementById('confirmYesBtn');
+        const confirmCancelBtn = document.getElementById('confirmCancelBtn');
+
+        // Colors for wheel segments
+        const segmentColors = [
+            '#ef4444', '#f97316', '#eab308', '#22c55e', '#10b981', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef',
+            '#ec4899', '#f43f5e', '#fb7185', '#be123c', '#9f1239', '#881337', '#7f1d1d', '#b91c1c', '#dc2626', '#ef4444'
+        ];
+
+        /**
+         * Sets the language of the application.
+         * @param {string} lang - The language code ('en' or 'fr').
+         */
+        function setLanguage(lang) {
+            currentLanguage = lang;
+            document.documentElement.lang = lang; // Set HTML lang attribute
+
+            // Update title
+            document.querySelector('title').textContent = translations[lang].appTitle;
+
+            // Update elements with data-i18n attribute
+            document.querySelectorAll('[data-i18n]').forEach(element => {
+                const key = element.getAttribute('data-i18n');
+                if (translations[lang][key]) {
+                    element.textContent = translations[lang][key];
+                }
+            });
+
+            // Update placeholders with data-i18n-placeholder attribute
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(element => {
+                const key = element.getAttribute('data-i18n-placeholder');
+                if (translations[lang][key]) {
+                    element.placeholder = translations[lang][key];
+                }
+            });
+
+            // Update specific dynamic elements
+            updateParticipantCount(); // This will use the correct translation for count
+            // Update input placeholder based on current drawing mode
+            if (drawingMode === 'numbers') {
+                participantsInput.placeholder = translations[lang].numbersPlaceholder;
+            } else {
+                participantsInput.placeholder = translations[lang].namesPlaceholder;
+            }
+        }
+
+        /**
+         * Shows a modal by adding the 'show' class and removing 'hidden'.
+         * @param {HTMLElement} modalElement The modal DOM element.
+         */
+        function showModal(modalElement) {
+            modalElement.classList.remove('hidden');
+            // Force reflow to ensure transition plays
+            void modalElement.offsetWidth;
+            modalElement.classList.add('show');
+        }
+
+        /**
+         * Hides a modal by removing the 'show' class and adding 'hidden' after transition.
+         * @param {HTMLElement} modalElement The modal DOM element.
+         */
+        function hideModal(modalElement) {
+            modalElement.classList.remove('show');
+            modalElement.addEventListener('transitionend', function handler() {
+                modalElement.classList.add('hidden');
+                modalElement.removeEventListener('transitionend', handler);
+            });
+        }
+
+        /**
+         * Updates the participant count display and spin button state.
+         */
+        function updateParticipantCount() {
+            participantCountDisplay.textContent = `${participants.length}${translations[currentLanguage].participantCountSuffix}`;
+            spinBtn.disabled = participants.length < 2 || isSpinning;
+            exportExcelBtn.disabled = winnerHistory.length === 0; // Disable export if no winners
+        }
+
+        /**
+         * Draws the wheel segments based on the participants array.
+         */
+        function drawWheel() {
+            wheel.innerHTML = ''; // Clear existing segments
+            resultDisplay.classList.add('hidden'); // Hide previous result
+            resultDisplay.classList.remove('show'); // Reset result animation
+
+            if (participants.length === 0) {
+                wheel.style.transform = `rotate(0deg)`; // Reset visual rotation
+                currentRotation = 0; // Reset logical rotation
+                updateParticipantCount();
+                return;
+            }
+
+            const segmentAngle = 360 / participants.length;
+
+            participants.forEach((participant, index) => {
+                const segment = document.createElement('div');
+                segment.classList.add('wheel-segment');
+                const rotation = index * segmentAngle;
+                const color = segmentColors[index % segmentColors.length];
+
+                segment.style.backgroundColor = color;
+                segment.style.transform = `rotate(${rotation}deg) skewY(${90 - segmentAngle}deg)`;
+                segment.style.clipPath = `polygon(0% 0%, 100% 0%, 50% 100%)`;
+
+                const textContainer = document.createElement('div');
+                textContainer.textContent = participant;
+                textContainer.style.transform = `skewY(${-(90 - segmentAngle)}deg) rotate(${segmentAngle / 2}deg)`;
+                textContainer.style.position = 'absolute';
+                textContainer.style.whiteSpace = 'nowrap';
+                textContainer.style.overflow = 'hidden';
+                textContainer.style.textOverflow = 'ellipsis';
+                textContainer.style.maxWidth = '80%';
+
+                segment.appendChild(textContainer);
+                wheel.appendChild(segment);
+            });
+
+            wheel.style.transform = `rotate(${currentRotation}deg)`;
+            updateParticipantCount();
+        }
+
+        /**
+         * Handles adding participants from the input field based on the selected mode.
+         */
+        addParticipantsBtn.addEventListener('click', () => {
+            const inputVal = participantsInput.value.trim();
+            if (inputVal) {
+                const rawNewParticipants = inputVal.split(/[\n,]+/).map(item => item.trim()).filter(item => item !== '');
+                let newParticipants = [];
+
+                if (drawingMode === 'numbers') {
+                    newParticipants = rawNewParticipants.filter(item => {
+                        // Check if it's a valid number and not just an empty string after conversion
+                        return !isNaN(item) && item !== '';
+                    }).map(Number);
+                    if (newParticipants.length !== rawNewParticipants.length) {
+                        // Display a message for invalid numbers
+                        passwordErrorMsg.textContent = translations[currentLanguage].invalidNumbersWarning;
+                        passwordErrorMsg.classList.remove('hidden');
+                        setTimeout(() => passwordErrorMsg.classList.add('hidden'), 3000); // Hide after 3 seconds
+                    }
+                } else { // names mode
+                    newParticipants = rawNewParticipants;
+                }
+
+                participants.push(...newParticipants);
+                participantsInput.value = ''; // Clear input field
+                drawWheel(); // Redraw wheel with new participants
+            }
+        });
+
+        /**
+         * Handles clearing all participants.
+         */
+        clearParticipantsBtn.addEventListener('click', () => {
+            showModal(confirmationModal); // Show custom confirmation modal
+        });
+
+        // Event listeners for custom confirmation modal
+        confirmYesBtn.addEventListener('click', () => {
+            participants = [];
+            currentRotation = 0; // Reset rotation
+            winnerHistory = []; // Clear winner history as well
+            drawWheel(); // Redraw empty wheel
+            hideModal(confirmationModal);
+        });
+
+        confirmCancelBtn.addEventListener('click', () => {
+            hideModal(confirmationModal);
+        });
+
+        /**
+         * Handles the spin button click event.
+         */
+        spinBtn.addEventListener('click', () => {
+            if (isSpinning || participants.length < 2) {
+                return;
+            }
+
+            isSpinning = true;
+            spinBtn.disabled = true;
+            resultDisplay.classList.add('hidden');
+            resultDisplay.classList.remove('show');
+
+            const randomIndex = Math.floor(Math.random() * participants.length);
+            const winner = participants[randomIndex];
+            winnerValueDisplay.textContent = winner;
+
+            const segmentAngle = 360 / participants.length;
+            let targetAbsoluteRotation = 360 - (randomIndex * segmentAngle + segmentAngle / 2);
+
+            targetAbsoluteRotation = targetAbsoluteRotation % 360;
+            if (targetAbsoluteRotation < 0) {
+                targetAbsoluteRotation += 360;
+            }
+
+            let rotationNeeded = targetAbsoluteRotation - (currentRotation % 360);
+            if (rotationNeeded < 0) {
+                rotationNeeded += 360;
+            }
+
+            let degreesToSpin = currentRotation + rotationNeeded + (360 * 5); // 5 full spins for effect
+
+            wheel.style.transition = 'transform 6s cubic-bezier(0.25, 0.1, 0.25, 1)';
+            wheel.style.transform = `rotate(${degreesToSpin}deg)`;
+            currentRotation = degreesToSpin;
+
+            setTimeout(() => {
+                isSpinning = false;
+                spinBtn.disabled = false;
+                resultDisplay.classList.remove('hidden');
+                resultDisplay.classList.add('show');
+
+                // Store winner in history
+                const now = new Date();
+                const dateString = now.toLocaleDateString(currentLanguage === 'fr' ? 'fr-FR' : 'en-US') + ' ' + now.toLocaleTimeString(currentLanguage === 'fr' ? 'fr-FR' : 'en-US');
+                const winningSlogan = translations[currentLanguage].winningSlogan;
+                winnerHistory.push({
+                    value: winner,
+                    date: dateString,
+                    slogan: winningSlogan
+                });
+                updateParticipantCount(); // Update to enable/disable export button
+
+                wheel.style.transition = 'none';
+                wheel.style.transform = `rotate(${currentRotation % 360}deg)`;
+                currentRotation = currentRotation % 360;
+            }, 6000);
+        });
+
+        /**
+         * Handles the mode selection (names vs. numbers).
+         */
+        modeRadios.forEach(radio => {
+            radio.addEventListener('change', (event) => {
+                drawingMode = event.target.value;
+                participants = []; // Clear participants when mode changes
+                participantsInput.value = ''; // Clear input field
+                if (drawingMode === 'numbers') {
+                    participantsInput.placeholder = translations[currentLanguage].numbersPlaceholder;
+                } else {
+                    participantsInput.placeholder = translations[currentLanguage].namesPlaceholder;
+                }
+                drawWheel(); // Redraw wheel
+            });
+        });
+
+        /**
+         * Function to perform the Excel export.
+         */
+        function exportToExcel() {
+            if (winnerHistory.length === 0) {
+                // This case should ideally be handled by button disabling, but good for robustness
+                // No alert, just return.
+                return;
+            }
+
+            // Prepare data for Excel
+            const wsData = [
+                translations[currentLanguage].excelHeaders // Headers
+            ];
+            winnerHistory.forEach(entry => {
+                wsData.push([entry.value, entry.date, entry.slogan]);
+            });
+
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Draw History"); // Sheet name can be static or translated
+
+            // Generate and download the file
+            XLSX.writeFile(wb, "Draw_History.xlsx");
+        }
+
+        /**
+         * Event listener for the Export Excel button. Shows password modal.
+         */
+        exportExcelBtn.addEventListener('click', () => {
+            if (winnerHistory.length === 0) {
+                // Display a message for no draws to export
+                passwordErrorMsg.textContent = translations[currentLanguage].noDrawsToExport;
+                passwordErrorMsg.classList.remove('hidden');
+                setTimeout(() => passwordErrorMsg.classList.add('hidden'), 3000);
+                return;
+            }
+            exportPasswordInput.value = ''; // Clear previous input
+            passwordErrorMsg.classList.add('hidden'); // Hide any previous error
+            showModal(passwordModal);
+        });
+
+        /**
+         * Event listener for password modal submit button.
+         */
+        passwordSubmitBtn.addEventListener('click', () => {
+            if (exportPasswordInput.value === exportPassword) {
+                hideModal(passwordModal);
+                exportToExcel();
+            } else {
+                passwordErrorMsg.textContent = translations[currentLanguage].incorrectPassword;
+                passwordErrorMsg.classList.remove('hidden');
+            }
+        });
+
+        /**
+         * Event listener for password modal cancel button.
+         */
+        passwordCancelBtn.addEventListener('click', () => {
+            hideModal(passwordModal);
+            exportPasswordInput.value = ''; // Clear input on cancel
+            passwordErrorMsg.classList.add('hidden'); // Hide any error
+        });
+
+        /**
+         * Event listener for Settings button. Shows change password modal.
+         */
+        settingsBtn.addEventListener('click', () => {
+            newPasswordInput.value = '';
+            confirmNewPasswordInput.value = '';
+            changePasswordErrorMsg.classList.add('hidden');
+            showModal(changePasswordModal);
+        });
+
+        /**
+         * Event listener for change password modal submit button.
+         */
+        changePasswordSubmitBtn.addEventListener('click', () => {
+            const newPass = newPasswordInput.value;
+            const confirmPass = confirmNewPasswordInput.value;
+
+            if (newPass === '' || confirmPass === '') {
+                changePasswordErrorMsg.textContent = translations[currentLanguage].passwordEmpty;
+                changePasswordErrorMsg.classList.remove('hidden');
+            } else if (newPass === confirmPass) {
+                exportPassword = newPass; // Update the password
+                hideModal(changePasswordModal);
+                // Optionally, show a success message (e.g., another custom modal)
+            } else {
+                changePasswordErrorMsg.textContent = translations[currentLanguage].passwordsDoNotMatch;
+                changePasswordErrorMsg.classList.remove('hidden');
+            }
+        });
+
+        /**
+         * Event listener for change password modal cancel button.
+         */
+        changePasswordCancelBtn.addEventListener('click', () => {
+            hideModal(changePasswordModal);
+            newPasswordInput.value = '';
+            confirmNewPasswordInput.value = '';
+            changePasswordErrorMsg.classList.add('hidden');
+        });
+
+        // Event listener for language selector
+        languageSelector.addEventListener('change', (event) => {
+            setLanguage(event.target.value);
+        });
+
+        // Initial setup
+        // Set default language to English on load
+        setLanguage('en');
+        drawWheel(); // Draw wheel initially
+    </script>
+</body>
+</html>
