@@ -1,7 +1,678 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Image, FileText, Mic, Video, Users, Plus, X, PhoneCall, PhoneOff, BookText, Lightbulb, Volume2, Smile } from 'lucide-react';
 
+// Helper function to convert base64 to ArrayBuffer import React, { useState, useRef, useEffect } from 'react';
+import { Send, Image, FileText, Mic, Video, Users, Plus, X, PhoneCall, PhoneOff, BookText, Lightbulb, Volume2, Smile } from 'lucide-react';
+
 // Helper function to convert base64 to ArrayBuffer for audio
+const base64ToArrayBuffer = (base64) => {
+  const binaryString = window.atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+};
+
+// Helper function to convert PCM audio data to WAV format
+const pcmToWav = (pcmData, sampleRate) => {
+  const pcm16 = new Int16Array(pcmData);
+  const numChannels = 1;
+  const bitsPerSample = 16;
+  const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+  const blockAlign = numChannels * (bitsPerSample / 8);
+  const dataSize = pcm16.length * (bitsPerSample / 8);
+
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  // RIFF chunk descriptor
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(view, 8, 'WAVE');
+
+  // FMT sub-chunk
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // AudioFormat: 1 for PCM
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitsPerSample, true);
+
+  // DATA sub-chunk
+  writeString(view, 36, 'data');
+  view.setUint32(40, dataSize, true);
+
+  // Write PCM data
+  for (let i = 0; i < pcm16.length; i++) {
+    view.setInt16(44 + i * 2, pcm16[i], true);
+  }
+
+  return new Blob([view], { type: 'audio/wav' });
+};
+
+const writeString = (view, offset, string) => {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
+  }
+};
+
+// Main App Component
+const App = () => {
+  // State for messages in the chat
+  const [messages, setMessages] = useState([]);
+  // State for the current text message being typed
+  const [currentMessage, setCurrentMessage] = useState('');
+  // State for group members (simulated)
+  const [groupMembers, setGroupMembers] = useState(['Alice', 'Bob', 'Charlie']);
+  // State to control the "add member" modal visibility
+  const [isAddingMember, setIsAddingMember] = useState(false);
+  // State for the new member's name input
+  const [newMemberName, setNewMemberName] = useState('');
+  // State to simulate an active video call
+  const [isCallActive, setIsCallActive] = useState(false);
+  // Ref for auto-scrolling to the bottom of the chat
+  const messagesEndRef = useRef(null);
+
+  // States for Gemini API features
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [suggestedReply, setSuggestedReply] = useState('');
+  const [isGeneratingReply, setIsGeneratingReply] = useState(false);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+
+  // New state for emoji picker visibility
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  // New state for typing indicator simulation
+  const [isTyping, setIsTyping] = useState(false);
+
+  // Common Emojis for the picker
+  const emojis = ['😀', '😂', '😍', '👍', '🙏', '🎉', '🚀', '💡', '❤️', '🔥', '😊', '😎', '🥳', '🤩', '🤔', '💬'];
+
+  // Gemini API Key (Canvas will inject this at runtime)
+  const apiKey = "";
+
+  // Scroll to the bottom of the chat whenever messages change
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  // Simulate typing indicator
+  useEffect(() => {
+    let typingTimeout;
+    if (currentMessage.length > 0) {
+      setIsTyping(true);
+      typingTimeout = setTimeout(() => {
+        setIsTyping(false);
+      }, 1500); // Typing indicator shows for 1.5 seconds after last key press
+    } else {
+      setIsTyping(false);
+      clearTimeout(typingTimeout);
+    }
+    return () => clearTimeout(typingTimeout);
+  }, [currentMessage]);
+
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  // Function to send a text message
+  const sendMessage = () => {
+    if (currentMessage.trim()) {
+      const newMessage = {
+        id: Date.now(),
+        sender: 'You', // In a real app, this would be the authenticated user
+        type: 'text',
+        content: currentMessage.trim(),
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages((prevMessages) => [...prevMessages, newMessage]);
+      setCurrentMessage(''); // Clear input field
+      setSuggestedReply(''); // Clear any pending suggestions
+      setShowEmojiPicker(false); // Close emoji picker after sending
+    }
+  };
+
+  // Function to insert emoji into message input
+  const insertEmoji = (emoji) => {
+    setCurrentMessage((prevMsg) => prevMsg + emoji);
+  };
+
+  // Simulated function for handling file uploads (images, documents, voice)
+  const handleFileUpload = (type) => {
+    const fileName = `example_${type}_${Date.now()}.${type === 'image' ? 'png' : type === 'document' ? 'pdf' : 'mp3'}`;
+    const newMessage = {
+      id: Date.now(),
+      sender: 'You',
+      type: type,
+      content: fileName, // In a real app, this would be a URL
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    setMessages((prevMessages) => [...prevMessages, newMessage]);
+  };
+
+  // Function to add a new member to the group
+  const addMember = () => {
+    if (newMemberName.trim() && !groupMembers.includes(newMemberName.trim())) {
+      setGroupMembers((prevMembers) => [...prevMembers, newMemberName.trim()]);
+      setNewMemberName('');
+      setIsAddingMember(false); // Close modal
+      const notificationMessage = {
+        id: Date.now(),
+        sender: 'System',
+        type: 'notification',
+        content: `${newMemberName.trim()} has been added to the group.`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages((prevMessages) => [...prevMessages, notificationMessage]);
+    }
+  };
+
+  // Function to simulate starting a video call
+  const startVideoCall = () => {
+    setIsCallActive(true);
+    const callMessage = {
+      id: Date.now(),
+      sender: 'System',
+      type: 'video_call_start',
+      content: 'Video call started!',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    setMessages((prevMessages) => [...prevMessages, callMessage]);
+  };
+
+  // Function to simulate ending a video call
+  const endVideoCall = () => {
+    setIsCallActive(false);
+    const callEndMessage = {
+      id: Date.now(),
+      sender: 'System',
+      type: 'video_call_end',
+      content: 'Video call ended.',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    setMessages((prevMessages) => [...prevMessages, callEndMessage]);
+  };
+
+  // ✨ Gemini API Integration: Summarize Chat
+  const summarizeChat = async () => {
+    setIsSummarizing(true);
+    try {
+      // Filter out system messages and format for LLM
+      const chatHistoryForLLM = messages
+        .filter(msg => msg.type === 'text')
+        .map(msg => `${msg.sender}: ${msg.content}`)
+        .join('\n');
+
+      if (!chatHistoryForLLM) {
+        setMessages(prev => [...prev, { id: Date.now(), sender: 'System', type: 'notification', content: 'No text messages to summarize.', timestamp: new Date().toLocaleTimeString() }]);
+        setIsSummarizing(false);
+        return;
+      }
+
+      const prompt = `Summarize the following chat conversation:\n\n${chatHistoryForLLLLM}\n\nSummary:`;
+
+      let chatHistory = [];
+      chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+      const payload = { contents: chatHistory };
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json();
+
+      if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
+        const summaryText = result.candidates[0].content.parts[0].text;
+        setMessages(prev => [...prev, {
+          id: Date.now(),
+          sender: 'System',
+          type: 'notification',
+          content: `✨ Chat Summary: ${summaryText}`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }]);
+      } else {
+        setMessages(prev => [...prev, { id: Date.now(), sender: 'System', type: 'notification', content: 'Failed to generate summary.', timestamp: new Date().toLocaleTimeString() }]);
+      }
+    } catch (error) {
+      console.error('Error summarizing chat:', error);
+      setMessages(prev => [...prev, { id: Date.now(), sender: 'System', type: 'notification', content: 'Error summarizing chat. Please try again.', timestamp: new Date().toLocaleTimeString() }]);
+    } finally {
+      setIsSummarizing(false);
+    }
+  };
+
+  // ✨ Gemini API Integration: Get Smart Reply Suggestion
+  const getSuggestedReply = async () => {
+    setIsGeneratingReply(true);
+    setSuggestedReply(''); // Clear previous suggestion
+    try {
+      // Get last 5 text messages for context
+      const recentMessages = messages
+        .filter(msg => msg.type === 'text')
+        .slice(-5)
+        .map(msg => `${msg.sender}: ${msg.content}`)
+        .join('\n');
+
+      if (!recentMessages) {
+        setSuggestedReply('No recent messages for a suggestion.');
+        setIsGeneratingReply(false);
+        return;
+      }
+
+      const prompt = `Based on the following recent chat conversation, suggest a concise and appropriate reply. Do not include sender names in the reply.
+      \n\nConversation:\n${recentMessages}\n\nSuggested Reply:`;
+
+      let chatHistory = [];
+      chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+      const payload = { contents: chatHistory };
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json();
+
+      if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
+        setSuggestedReply(result.candidates[0].content.parts[0].text);
+      } else {
+        setSuggestedReply('Could not generate a suggestion.');
+      }
+    } catch (error) {
+      console.error('Error generating reply:', error);
+      setSuggestedReply('Error generating reply.');
+    } finally {
+      setIsGeneratingReply(false);
+    }
+  };
+
+  // ✨ Gemini API Integration: Read Message Aloud (TTS)
+  const readMessageAloud = async (textToSpeak) => {
+    if (isPlayingAudio) return; // Prevent multiple audio plays
+    setIsPlayingAudio(true);
+
+    try {
+      const payload = {
+        contents: [{
+          parts: [{ text: textToSpeak }]
+        }],
+        generationConfig: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: "Kore" } // Using Kore voice
+            }
+          }
+        },
+        model: "gemini-2.5-flash-preview-tts"
+      };
+
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json();
+
+      const part = result?.candidates?.[0]?.content?.parts?.[0];
+      const audioData = part?.inlineData?.data;
+      const mimeType = part?.inlineData?.mimeType;
+
+      if (audioData && mimeType && mimeType.startsWith("audio/L16")) {
+        const sampleRateMatch = mimeType.match(/rate=(\d+)/);
+        const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 16000; // Default to 16kHz if not found
+
+        const pcmData = base64ToArrayBuffer(audioData);
+        const wavBlob = pcmToWav(pcmData, sampleRate);
+        const audioUrl = URL.createObjectURL(wavBlob);
+
+        const audio = new Audio(audioUrl);
+        audio.play();
+        audio.onended = () => {
+          setIsPlayingAudio(false);
+          URL.revokeObjectURL(audioUrl); // Clean up the URL
+        };
+      } else {
+        console.error('TTS API response error or no audio data:', result);
+        alert('Failed to play audio. No valid audio data received.');
+        setIsPlayingAudio(false);
+      }
+    } catch (error) {
+      console.error('Error playing audio:', error);
+      alert('Error playing audio. Please check console for details.');
+      setIsPlayingAudio(false);
+    }
+  };
+
+  // Function to get a consistent color for sender initials
+  const getSenderColor = (sender) => {
+    const colors = ['bg-red-400', 'bg-green-400', 'bg-purple-400', 'bg-orange-400', 'bg-teal-400', 'bg-pink-400'];
+    let hash = 0;
+    for (let i = 0; i < sender.length; i++) {
+      hash = sender.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const index = Math.abs(hash % colors.length);
+    return colors[index];
+  };
+
+
+  return (
+    <div className="flex flex-col h-screen bg-gray-100 font-inter antialiased">
+      {/* Header */}
+      <header className="bg-gradient-to-r from-blue-600 to-purple-700 text-white p-4 shadow-lg flex items-center justify-between rounded-b-xl">
+        <h1 className="text-2xl font-bold">Chat App (Simulation)</h1>
+        <div className="flex space-x-4">
+          <button
+            onClick={() => setIsAddingMember(true)}
+            className="p-2 bg-blue-500 hover:bg-blue-400 rounded-full shadow-md transition-all duration-200"
+            title="Add Member"
+          >
+            <Users size={20} />
+          </button>
+          <button
+            onClick={summarizeChat}
+            disabled={isSummarizing}
+            className="p-2 bg-indigo-500 hover:bg-indigo-400 text-white rounded-full shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="✨ Summarize Chat"
+          >
+            {isSummarizing ? '...' : <BookText size={20} />}
+          </button>
+          {!isCallActive ? (
+            <button
+              onClick={startVideoCall}
+              className="p-2 bg-green-500 hover:bg-green-400 rounded-full shadow-md transition-all duration-200"
+              title="Start Video Call"
+            >
+              <Video size={20} />
+            </button>
+          ) : (
+            <button
+              onClick={endVideoCall}
+              className="p-2 bg-red-500 hover:bg-red-400 rounded-full shadow-md transition-all duration-200"
+              title="End Video Call"
+            >
+              <PhoneOff size={20} />
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* Main Content Area */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar for Group Members */}
+        <aside className="w-1/4 bg-white p-4 border-r border-gray-200 shadow-inner rounded-br-xl overflow-y-auto">
+          <h2 className="text-xl font-semibold mb-4 text-gray-800">Group Members</h2>
+          <ul className="space-y-2">
+            {groupMembers.map((member, index) => (
+              <li key={index} className="flex items-center p-2 bg-gray-50 rounded-lg shadow-sm">
+                <div className="w-8 h-8 bg-blue-200 text-blue-800 rounded-full flex items-center justify-center font-bold mr-3">
+                  {member.charAt(0)}
+                </div>
+                <span className="text-gray-700">{member}</span>
+              </li>
+            ))}
+          </ul>
+        </aside>
+
+        {/* Chat Area */}
+        <main className="flex-1 flex flex-col bg-gray-50 rounded-bl-xl">
+          <div className="flex-1 p-6 overflow-y-auto space-y-4">
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex ${msg.sender === 'You' ? 'justify-end' : 'justify-start'}`}
+              >
+                {msg.sender !== 'You' && msg.sender !== 'System' && (
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-sm mr-2 flex-shrink-0 ${getSenderColor(msg.sender)}`}>
+                    {msg.sender.charAt(0)}
+                  </div>
+                )}
+                <div
+                  className={`max-w-md p-3 rounded-xl shadow-md ${
+                    msg.sender === 'You'
+                      ? 'bg-blue-500 text-white rounded-br-none'
+                      : msg.sender === 'System'
+                      ? 'bg-yellow-100 text-yellow-800 text-sm italic'
+                      : 'bg-gray-300 text-gray-800 rounded-bl-none'
+                  }`}
+                >
+                  {msg.sender !== 'System' && (
+                    <div className="font-bold text-sm mb-1">{msg.sender}</div>
+                  )}
+                  {msg.type === 'text' && (
+                    <p className="flex justify-between items-center gap-2">
+                      <span>{msg.content}</span>
+                      <button
+                        onClick={() => readMessageAloud(msg.content)}
+                        disabled={isPlayingAudio}
+                        className="p-1 bg-gray-200 hover:bg-gray-300 rounded-full text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="✨ Read Aloud"
+                      >
+                        <Volume2 size={16} />
+                      </button>
+                    </p>
+                  )}
+                  {msg.type === 'image' && (
+                    <div className="flex flex-col items-center">
+                      <img
+                        src={`https://placehold.co/200x150/E0F2F7/0288D1?text=Image`}
+                        alt="Sent Image"
+                        className="rounded-lg mb-2"
+                      />
+                      <span className="text-xs opacity-80">{msg.content} (Simulated)</span>
+                    </div>
+                  )}
+                  {msg.type === 'document' && (
+                    <div className="flex items-center space-x-2">
+                      <FileText size={24} className="text-gray-600" />
+                      <a href="#" className="text-blue-700 hover:underline">
+                        {msg.content} (Simulated)
+                      </a>
+                    </div>
+                  )}
+                  {msg.type === 'voice' && (
+                    <div className="flex items-center space-x-2">
+                      <Mic size={24} className="text-green-600" />
+                      <span className="text-sm">Voice Message: {msg.content} (Simulated)</span>
+                      {/* In a real app, this would be an audio player */}
+                    </div>
+                  )}
+                  {msg.type === 'video_call_start' && (
+                    <div className="flex items-center space-x-2 text-green-700">
+                      <PhoneCall size={20} />
+                      <span>{msg.content}</span>
+                    </div>
+                  )}
+                   {msg.type === 'video_call_end' && (
+                    <div className="flex items-center space-x-2 text-red-700">
+                      <PhoneOff size={20} />
+                      <span>{msg.content}</span>
+                    </div>
+                  )}
+                  {msg.type === 'notification' && (
+                    <p className="text-center text-sm">{msg.content}</p>
+                  )}
+                  <div className="text-right text-xs mt-1 opacity-75">{msg.timestamp}</div>
+                </div>
+                {msg.sender === 'You' && (
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-sm ml-2 flex-shrink-0 ${getSenderColor(msg.sender)}`}>
+                    {msg.sender.charAt(0)}
+                  </div>
+                )}
+              </div>
+            ))}
+            {isTyping && (
+              <div className="flex justify-start">
+                <div className="max-w-md p-2 rounded-xl bg-gray-200 text-gray-700 text-sm italic shadow-sm">
+                  Typing...
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} /> {/* Scroll target */}
+          </div>
+
+          {/* Message Input Area */}
+          <div className="p-4 bg-white border-t border-gray-200 shadow-inner rounded-tl-xl relative">
+            {showEmojiPicker && (
+              <div className="absolute bottom-full left-0 right-0 bg-white border border-gray-200 rounded-t-xl shadow-lg p-3 grid grid-cols-8 gap-2 mb-2">
+                {emojis.map((emoji, index) => (
+                  <button
+                    key={index}
+                    onClick={() => insertEmoji(emoji)}
+                    className="p-1 text-2xl hover:bg-gray-100 rounded-md transition-colors"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {suggestedReply && (
+              <div className="mb-3 p-2 bg-blue-100 border border-blue-200 rounded-lg flex items-center justify-between text-blue-800 text-sm">
+                <span>✨ Suggested Reply: {suggestedReply}</span>
+                <button
+                  onClick={() => {
+                    setCurrentMessage(suggestedReply);
+                    setSuggestedReply('');
+                  }}
+                  className="ml-2 px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+                >
+                  Use
+                </button>
+              </div>
+            )}
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                className="p-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-full shadow-lg transition-all duration-200"
+                title="Select Emoji"
+              >
+                <Smile size={20} />
+              </button>
+              <input
+                type="text"
+                value={currentMessage}
+                onChange={(e) => setCurrentMessage(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                placeholder="Type your message..."
+                className="flex-1 p-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all duration-200"
+              />
+              <button
+                onClick={sendMessage}
+                className="p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all duration-200"
+                title="Send Message"
+              >
+                <Send size={20} />
+              </button>
+              <button
+                onClick={() => handleFileUpload('image')}
+                className="p-3 bg-purple-600 hover:bg-purple-700 text-white rounded-full shadow-lg transition-all duration-200"
+                title="Send Image"
+              >
+                <Image size={20} />
+              </button>
+              <button
+                onClick={() => handleFileUpload('document')}
+                className="p-3 bg-orange-600 hover:bg-orange-700 text-white rounded-full shadow-lg transition-all duration-200"
+                title="Send Document"
+              >
+                <FileText size={20} />
+              </button>
+              <button
+                onClick={() => handleFileUpload('voice')}
+                className="p-3 bg-green-600 hover:bg-green-700 text-white rounded-full shadow-lg transition-all duration-200"
+                title="Send Voice Message"
+              >
+                <Mic size={20} />
+              </button>
+              <button
+                onClick={getSuggestedReply}
+                disabled={isGeneratingReply}
+                className="p-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-full shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="✨ Get Smart Reply"
+              >
+                {isGeneratingReply ? '...' : <Lightbulb size={20} />}
+              </button>
+            </div>
+          </div>
+        </main>
+      </div>
+
+      {/* Add Member Modal */}
+      {isAddingMember && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-xl shadow-2xl w-96 transform transition-all duration-300 scale-100">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold text-gray-800">Add New Member</h2>
+              <button
+                onClick={() => setIsAddingMember(false)}
+                className="p-2 rounded-full hover:bg-gray-200 transition-all duration-200"
+              >
+                <X size={20} className="text-gray-600" />
+              </button>
+            </div>
+            <input
+              type="text"
+              value={newMemberName}
+              onChange={(e) => setNewMemberName(e.target.value)}
+              placeholder="Enter member's name"
+              className="w-full p-3 border border-gray-300 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+            <button
+              onClick={addMember}
+              className="w-full p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-all duration-200"
+            >
+              <Plus size={20} className="inline-block mr-2" /> Add Member
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Video Call Overlay */}
+      {isCallActive && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 flex flex-col items-center justify-center z-40">
+          <div className="text-white text-3xl font-bold mb-8 flex items-center space-x-3">
+            <PhoneCall size={36} className="animate-pulse" />
+            <span>Simulating Group Video Call...</span>
+          </div>
+          <div className="grid grid-cols-2 gap-4 w-3/4 h-3/4">
+            {/* Simulated video feeds */}
+            <div className="bg-gray-800 rounded-xl flex items-center justify-center text-gray-400 text-lg shadow-lg">
+              <Video size={48} /> Your Feed
+            </div>
+            <div className="bg-gray-800 rounded-xl flex items-center justify-center text-gray-400 text-lg shadow-lg">
+              <Video size={48} /> Alice's Feed
+            </div>
+            <div className="bg-gray-800 rounded-xl flex items-center justify-center text-gray-400 text-lg shadow-lg">
+              <Video size={48} /> Bob's Feed
+            </div>
+            <div className="bg-gray-800 rounded-xl flex items-center justify-center text-gray-400 text-lg shadow-lg">
+              <Video size={48} /> Charlie's Feed
+            </div>
+          </div>
+          <button
+            onClick={endVideoCall}
+            className="mt-8 p-4 bg-red-600 hover:bg-red-700 text-white rounded-full shadow-xl transition-all duration-200 flex items-center space-x-2"
+          >
+            <PhoneOff size={24} />
+            <span>End Call</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default App;
+ audio
 const base64ToArrayBuffer = (base64) => {
   const binaryString = window.atob(base64);
   const len = binaryString.length;
